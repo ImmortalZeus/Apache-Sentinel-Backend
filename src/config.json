@@ -1,0 +1,5 @@
+{
+    "PORT": 3000,
+    "DB_BATCH_SIZE": 1000,
+    "DB_FLUSH_INTERVAL": 5000
+}
