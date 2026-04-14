@@ -2,6 +2,8 @@ import config from 'config.json';
 import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import nocache from 'nocache';
+import { logService } from 'services/Log.service';
+import { connectDB } from 'utils/db.service';
 import { lineParser } from 'utils/logParsers/lineParser';
 
 const app = express();
@@ -49,7 +51,44 @@ app.use((error: Error & { status?: number }, req: Request, res: Response, next: 
     res.send({ message: error.message });
 });
 
-// Start server
-app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
+async function startServer() {
+    try {
+        // 1. Connect to Database first
+        await connectDB();
+
+        // 2. Start server only after DB connection is successful
+        app.listen(port, () => {
+            app.listen(port, () => {
+                console.log(`Server is running on http://localhost:${port}`);
+            });
+        });
+    } catch (error) {
+        console.error(
+            "Failed to start server due to a database error:",
+            error,
+        );
+        process.exit(1);
+    }
+}
+
+startServer();
+
+let shuttingDown = false;
+
+const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    console.log(`Received ${signal}`);
+    try {
+        await logService.flush();
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+    } finally {
+        process.exit(0);
+    }
+};
+
+['SIGINT', 'SIGTERM'].forEach(sig => {
+    process.on(sig, shutdown);
 });
