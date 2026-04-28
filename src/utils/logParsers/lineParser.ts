@@ -81,9 +81,12 @@ class LineParser {
                 userAgent: groups['UserAgent'],
                 requestMethod: groups['RequestMethod'] || null,
                 requestUrl: groups['RequestUrl'] || null,
-                httpVersion: groups['HttpVer'] || null
+                httpVersion: groups['HttpVer'] || null,
+                forwardFor: groups['ForwardFor'] !== "-" ? groups['ForwardFor'] : null // Thêm trường forwardFor vào log nếu có (nếu không có sẽ là null) 
             })
-            logService.add(log);
+            // Lưu ý: Ở đây chúng ta chỉ tạo đối tượng log từ chuỗi, việc lưu log vào database sẽ được thực hiện ở một bước khác (ví dụ trong SentinelEngine) 
+            // để tách biệt rõ ràng giữa việc phân tích log và lưu trữ log. Điều này giúp cho mã nguồn của chúng ta trở nên linh hoạt hơn và dễ bảo trì hơn.
+            //logService.add(log); 
             return log;
         }
         throw new Error("Can't parse the given string");

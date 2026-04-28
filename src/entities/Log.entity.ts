@@ -21,6 +21,8 @@ export interface ILog extends Document {
     browser: string;
     os: string;
     device: string;
+    forwardFor?: string;      // Lưu IP thật sau Proxy
+    processingTime?: number;  // Lưu %D (thời gian xử lý) để bắt Cache-busting
 }
 
 const LogSchema = new Schema<ILog>({
@@ -44,6 +46,9 @@ const LogSchema = new Schema<ILog>({
     browser:                { type: String, required: false },
     os:                     { type: String, required: false },
     device:                 { type: String, required: false },
+    // added fields
+    forwardFor:             { type: String, required: false },
+    processingTime:         { type: Number, required: false }
 })
 
 export const Log = mongoose.model<ILog>('Log', LogSchema)
