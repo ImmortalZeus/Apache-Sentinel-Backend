@@ -57,6 +57,7 @@
     "mongoose": "^9.3.3",
     "multer": "^2.1.1",
     "nocache": "^4.0.0",
+    "rate-limiter-flexible": "^11.0.1",
     "tsc-alias": "^1.8.16",
     "tsx": "^4.21.0",
     "zod": "^4.3.6"
