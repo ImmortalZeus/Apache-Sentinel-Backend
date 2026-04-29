@@ -28,6 +28,7 @@ app.get('/', (req: Request, res: Response) => {
     res.send('Hello World!');
 });
 
+/*
 // Route POST
 app.post('/log', (req: Request, res: Response) => {
     const line: string = req.body ? req.body as string : "";
@@ -76,6 +77,79 @@ startServer();
 let shuttingDown = false;
 
 const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    console.log(`Received ${signal}`);
+    try {
+        await logService.flush();
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+    } finally {
+        process.exit(0);
+    }
+};
+
+['SIGINT', 'SIGTERM'].forEach(sig => {
+    process.on(sig, shutdown);
+});
+*/
+
+// Route POST
+import { sentinelEngine } from 'detection/Sentinel.service';
+
+app.post('/log', async (req: Request, res: Response) => {
+    const line: string = req.body ? req.body as string : "";
+    
+    try {
+        const parsedLog = lineParser.run(line);
+        if (parsedLog) {
+            // Đưa qua Sentinel phân tích trước
+            await sentinelEngine.analyze(parsedLog);
+            
+            // Ghi DB thủ công
+            logService.add(parsedLog);
+        }
+        res.sendStatus(200);
+    } catch (err) {
+        // Bỏ in lỗi ra console để lúc bị DDoS không bị rác màn hình
+        res.sendStatus(200);
+    }
+});
+
+// Middleware 404
+app.use((req: Request, res: Response, next: NextFunction) => {
+    const error = new Error('Not Found') as Error & { status?: number };
+    error.status = 404;
+    next(error);
+});
+
+// Error handling middleware
+app.use((error: Error & { status?: number }, req: Request, res: Response, next: NextFunction) => {
+    res.status(error.status || 500);
+    res.send({ message: error.message });
+});
+
+async function startServer() {
+    try {
+        // Connect to Database first
+        await connectDB();
+
+        // Start server only after DB connection is successful
+        app.listen(port, () => {
+            console.log(`Server is running on http://localhost:${port}`);
+        });
+    } catch (error) {
+        console.error("Failed to start server due to a database error:", error);
+        process.exit(1);
+    }
+}
+
+startServer();
+
+let shuttingDown = false;
+
+const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
 
