@@ -1,10 +1,15 @@
+import "./env";
 import config from 'config.json';
 import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import nocache from 'nocache';
-import { logService } from 'services/Log.service';
-import { connectDB } from 'utils/db.service';
+import { logService } from 'services/log.service';
 import { lineParser } from 'utils/logParsers/lineParser';
+import { dosDetector } from "detectors/dos3.detector";
+import { checkAdminPrivilege } from "utils/checkAdminPrivilege";
+import { firewallService } from "services/firewall.service";
+import { dbService } from "services/db.service";
+import { notificationService } from "services/notification.service";
 
 const app = express();
 const port: number = config.PORT;
@@ -29,10 +34,18 @@ app.get('/', (req: Request, res: Response) => {
 });
 
 // Route POST
-app.post('/log', (req: Request, res: Response) => {
+app.post('/log', async (req: Request, res: Response) => {
     const line: string = req.body ? req.body as string : "";
     console.log("Log received:", line);
-    console.log(lineParser.run(line));
+    const lineData = lineParser.run(line);
+    // console.log(dosDetector.check(lineData.remoteIp));
+    if (dosDetector.check(lineData.remoteIp)) {
+        const alreadyBlocked = firewallService.isBlocked(lineData.remoteIp);
+        await firewallService.block(lineData.remoteIp)
+        if (!alreadyBlocked) {
+            notificationService.notify(lineData.remoteIp)  // không cần await
+        }
+    }
     // TODO: parse, ghi DB, phân tích rule/ML
     res.sendStatus(200);
 });
@@ -54,13 +67,15 @@ app.use((error: Error & { status?: number }, req: Request, res: Response, next: 
 async function startServer() {
     try {
         // 1. Connect to Database first
-        await connectDB();
+        await dbService.connect();
+
+        await checkAdminPrivilege();
+        await firewallService.syncFromFirewall()          // sync firewall state
+        dosDetector.syncBlockedIPs(firewallService.getBlockedIPs())  // sync sang detector
 
         // 2. Start server only after DB connection is successful
         app.listen(port, () => {
-            app.listen(port, () => {
-                console.log(`Server is running on http://localhost:${port}`);
-            });
+            console.log(`Server is running on http://localhost:${port}`);
         });
     } catch (error) {
         console.error(
@@ -82,6 +97,7 @@ const shutdown = async (signal) => {
     console.log(`Received ${signal}`);
     try {
         await logService.flush();
+        await dbService.disconnect();
     } catch (err) {
         console.error('Error during shutdown:', err);
     } finally {

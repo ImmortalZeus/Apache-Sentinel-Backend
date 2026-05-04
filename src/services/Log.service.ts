@@ -1,6 +1,6 @@
 import config from 'config.json';
-import { CreateLogDtoType } from "dto/Log.dto"
-import { Log } from "entities/Log.entity";
+import { CreateLogDtoType } from "dtos/log.dto"
+import { Log } from "entities/log.entity";
 import { getErrorMessage } from "utils/error/error";
 
 class LogService {
