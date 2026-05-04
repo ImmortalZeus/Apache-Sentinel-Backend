@@ -5,7 +5,7 @@ import multer from 'multer';
 import nocache from 'nocache';
 import { logService } from 'services/log.service';
 import { lineParser } from 'utils/logParsers/lineParser';
-import { dosDetector } from "detectors/dos3.detector";
+import { dosDetector } from "detectors/dos.detector";
 import { checkAdminPrivilege } from "utils/checkAdminPrivilege";
 import { firewallService } from "services/firewall.service";
 import { dbService } from "services/db.service";
