@@ -17,6 +17,7 @@ export class FirewallService {
             const match = stdout.match(/RemoteIP:\s+(.+)/)
             if (!match) return  // rule tồn tại nhưng không có IP
 
+            this.blockedIPs.clear();
             const ips = match[1].split(',').map(ip => ip.trim())
             for (const ip of ips) {
                 this.blockedIPs.add(ip)
@@ -27,6 +28,7 @@ export class FirewallService {
             // Rule chưa tồn tại → bình thường, không phải lỗi
             const output = (err as NodeJS.ErrnoException & { stdout?: string }).stdout ?? ''
             if (output.includes('No rules match')) {
+                this.blockedIPs.clear()
                 console.info('[Firewall] No existing block rule found, starting fresh')
                 return
             }
@@ -60,7 +62,7 @@ export class FirewallService {
     }
     
     /**
-     * Unblock IP — xóa khỏi danh sách và update rule.
+     * Unblock IP - xóa khỏi danh sách và update rule.
      */
     async unblock(ip: string): Promise<void> {
         if (!this.blockedIPs.has(ip)) {

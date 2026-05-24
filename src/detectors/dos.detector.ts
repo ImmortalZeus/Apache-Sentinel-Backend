@@ -1,4 +1,5 @@
 import os from 'os'
+import { firewallService } from 'services/firewall.service'
 
 // ─── Config ────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,10 @@ export interface DoSConfig {
 
     // Anomaly score để penalize trust (0.0 → 1.0)
     anomalyScoreToPenalize: number  // 0.7
+
+    // Hard burst multiplier — nếu window0 vượt threshold × multiplier → penalize ngay
+    // Chống window boundary attack (burst evasion)
+    hardBurstMultiplier: number     // 1.5
 
     // Trust score
     initialTrustScore: number       // 50
@@ -56,6 +61,8 @@ export const DEFAULT_CONFIG: DoSConfig = {
 
     anomalyScoreToPenalize: 0.7,
 
+    hardBurstMultiplier:    1.5,
+
     initialTrustScore:     50,
     trustPenaltyOnAnomaly: 15,
     trustRewardOnNormal:   1,
@@ -84,8 +91,6 @@ export interface IPProfile {
     lastSeen: number
 }
 
-// ─── CPU Utility ───────────────────────────────────────────────────────────
-
 let _lastCPUInfo = os.cpus()
 
 function measureCPUUsage(): number {
@@ -104,13 +109,11 @@ function measureCPUUsage(): number {
     return totalDelta === 0 ? 0 : 1 - idleDelta / totalDelta  // 0.0 → 1.0
 }
 
-// ─── DoS Detector ──────────────────────────────────────────────────────────
-
 export class DoSDetector {
     private readonly profiles = new Map<string, IPProfile>()
     private readonly config: DoSConfig
 
-    // Global threshold — chỉ apply cho IP suspicious, không phải tất cả
+    // Global threshold - chỉ apply cho IP suspicious, không phải tất cả
     private globalBaseThreshold: number
 
     // Cache CPU usage để dùng trong calcEffectiveThreshold
@@ -127,11 +130,16 @@ export class DoSDetector {
     // ── Public API ────────────────────────────────────────────────────────────
 
     syncBlockedIPs(ips: string[]): void {
+        for (const key of this.profiles.keys()) {
+            if(!ips.includes(key)) {
+                this.unblock(key);
+            }
+        }
         for (const ip of ips) {
             const now = Date.now()
             const profile = this.getOrCreateProfile(ip, now)
             profile.isBlocked = true
-            profile.trustScore = 0  // đã bị block → trust = 0
+            profile.trustScore = 0
         }
         console.info(`[DoS] Synced ${ips.length} blocked IPs from firewall`)
     }
@@ -145,7 +153,6 @@ export class DoSDetector {
         profile.timestamps.push(now)
         profile.lastSeen = now
 
-        // Giữ timestamps trong 3x windowMs
         const cutoff = now - this.config.windowMs * 3
         profile.timestamps = profile.timestamps.filter(t => t > cutoff)
 
@@ -180,6 +187,7 @@ export class DoSDetector {
     unblock(ip: string): void {
         const profile = this.profiles.get(ip)
         if (!profile) return
+        if (!profile.isBlocked) return
         profile.isBlocked = false
         profile.trustScore = this.config.initialTrustScore
         console.info(`[DoS] ${ip} unblocked`)
@@ -201,8 +209,6 @@ export class DoSDetector {
         return this.currentCPUUsage
     }
 
-    // ── Private ───────────────────────────────────────────────────────────────
-
     private getOrCreateProfile(ip: string, now: number): IPProfile {
         if (!this.profiles.has(ip)) {
             this.profiles.set(ip, {
@@ -217,40 +223,28 @@ export class DoSDetector {
         return this.profiles.get(ip)!
     }
 
-    /**
-     * Tính effective threshold cho từng IP dựa trên trust score và CPU.
-     *
-     * Mục tiêu: khi CPU cao, chỉ siết IP suspicious — không ảnh hưởng IP tin cậy.
-     *
-     * | Trust        | CPU bình thường | CPU cao (>80%)              |
-     * |--------------|-----------------|------------------------------|
-     * | Trusted (≥70)| baseThreshold   | baseThreshold (không đổi)   |
-     * | New IP       | baseThreshold   | baseThreshold (grace period) |
-     * | Neutral (≥40)| baseThreshold   | baseThreshold * 0.7          |
-     * | Suspicious   | perIpThreshold  | globalBaseThreshold (đã giảm)|
-     */
     private calcEffectiveThreshold(profile: IPProfile, now: number): number {
         const cpu = this.currentCPUUsage
         const cpuHigh = cpu > this.config.cpuHighThreshold
 
-        // IP tin cậy — không bị ảnh hưởng bởi CPU
+        // IP tin cậy => không bị ảnh hưởng bởi CPU
         if (profile.trustScore >= this.config.trustedTrustScore) {
             return Math.min(profile.perIpThreshold, this.config.baseThreshold)
         }
 
-        // IP mới (grace period) — chưa đủ data để đánh giá, không siết
+        // IP mới (grace period) => chưa đủ data để đánh giá, không siết
         const isNewIP = now - profile.firstSeen < this.config.gracePeriodMs
         if (isNewIP) {
             return this.config.baseThreshold
         }
 
-        // IP neutral — bị ảnh hưởng nhẹ khi CPU cao
+        // IP neutral => bị ảnh hưởng nhẹ khi CPU cao
         if (profile.trustScore >= this.config.neutralTrustScore) {
             const factor = cpuHigh ? this.config.neutralCPUFactor : 1.0
             return Math.min(profile.perIpThreshold, this.config.baseThreshold * factor)
         }
 
-        // IP suspicious — bị siết chặt theo CPU
+        // IP suspicious => bị siết chặt theo CPU
         return Math.min(
             profile.perIpThreshold,
             this.globalBaseThreshold  // đã bị giảm theo CPU trong adjustGlobalThreshold
@@ -260,12 +254,12 @@ export class DoSDetector {
   /**
    * Tính anomaly score từ 3 consecutive windows.
    *
-   * window0: [now-1x  → now]       (hiện tại,  weight 0.5)
-   * window1: [now-2x  → now-1x]    (trước đó,  weight 0.3)
-   * window2: [now-3x  → now-2x]    (xa hơn,    weight 0.2)
+   * window0: [now-1x  => now]       (hiện tại,  weight 0.5)
+   * window1: [now-2x  => now-1x]    (trước đó,  weight 0.3)
+   * window2: [now-3x  => now-2x]    (xa hơn,    weight 0.2)
    *
-   * Burst ngẫu nhiên:  window0 cao, window1/2 thấp → score thấp
-   * Sustained attack:  cả 3 windows đều cao        → score cao → penalize
+   * Burst ngẫu nhiên:  window0 cao, window1/2 thấp => score thấp
+   * Sustained attack:  cả 3 windows đều cao        => score cao  => penalize
    */
     private calcAnomalyScore(profile: IPProfile, now: number, threshold: number): number {
         const w = this.config.windowMs
@@ -274,31 +268,33 @@ export class DoSDetector {
         const count1 = profile.timestamps.filter(t => t > now - 2 * w && t <= now - w).length
         const count2 = profile.timestamps.filter(t => t > now - 3 * w && t <= now - 2 * w).length
 
-        const ratio0 = Math.min(count0 / threshold, 1)
-        const ratio1 = Math.min(count1 / threshold, 1)
-        const ratio2 = Math.min(count2 / threshold, 1)
+        // Hard burst check
+        if (count0 > threshold * this.config.hardBurstMultiplier) {
+            return 1.0  // force penalize ngay
+        }
 
-        // Xác định windows nào có data
-        // const hasWindow1 = profile.timestamps.some(t => t <= now - w)
-        // const hasWindow2 = profile.timestamps.some(t => t <= now - 2 * w)
+        // const ratio0 = Math.min(count0 / threshold, 1)
+        // const ratio1 = Math.min(count1 / threshold, 1)
+        // const ratio2 = Math.min(count2 / threshold, 1)
+
+        const ratio0 = count0 / threshold
+        const ratio1 = count1 / threshold
+        const ratio2 = count2 / threshold
+
         const hasWindow1 = count1 > 0
         const hasWindow2 = count2 > 0
 
-        // Redistribute weight về windows có data
+        // Redistribute weight
         if (!hasWindow1 && !hasWindow2) {
-            // Chỉ có window0 → weight = 1.0
             return ratio0
         }
 
         if (!hasWindow2) {
-            // Chỉ có window0 và window1
-            // Normalize lại: 0.5 + 0.3 = 0.8
             const totalWeight01 = this.config.window0Weight + this.config.window1Weight;
             return ratio0 * (this.config.window0Weight / totalWeight01) +
                 ratio1 * (this.config.window1Weight / totalWeight01)
         }
 
-        // Đủ cả 3 windows → công thức bình thường
         return (
             ratio0 * this.config.window0Weight +
             ratio1 * this.config.window1Weight +
@@ -331,8 +327,8 @@ export class DoSDetector {
 
     /**
      * Chạy mỗi 5 giây:
-     * - IP behave tốt → reward trust + tăng per-IP threshold từ từ
-     * - IP không active → xóa
+     * - IP behave tốt => reward trust + tăng per-IP threshold từ từ
+     * - IP không active => xóa
      */
     private tick(): void {
         const now = Date.now()
@@ -348,13 +344,11 @@ export class DoSDetector {
             const threshold = this.calcEffectiveThreshold(profile, now)
             const anomalyScore = this.calcAnomalyScore(profile, now, threshold)
 
-            // Score dưới 50% ngưỡng penalize → behave tốt
             if (anomalyScore < this.config.anomalyScoreToPenalize * 0.5) {
                 profile.trustScore = Math.min(
                     100,
                     profile.trustScore + this.config.trustRewardOnNormal
                 )
-                // Tăng per-IP threshold từ từ, tối đa bằng baseThreshold
                 profile.perIpThreshold = Math.min(
                     this.config.baseThreshold,
                     profile.perIpThreshold * 1.05

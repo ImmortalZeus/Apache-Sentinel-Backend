@@ -45,7 +45,7 @@ class LineParser {
             '(?:' +
             '(?<RequestMethod>[A-Z][A-Z0-9_-]*)\\s' +
             '(?<RequestUrl>\\S+)' +
-            '(?:\\s(?<HttpVer>HTTP\\/\\d\\.\\d))?' +
+            '(?:\\s(?<HttpVer>HTTP\\/\\d(?:\\.\\d)?))?' +
             ')' +
             '|' +
             '(?<RawRequest>[^\\"]*)' +

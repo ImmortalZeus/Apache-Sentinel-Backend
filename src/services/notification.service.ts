@@ -5,7 +5,6 @@ type NotificationEvent = 'click' | 'timeout' | 'close'
  
 export class NotificationService {
   constructor() {
-    // Gắn event listeners một lần duy nhất ở constructor
     this.setupListeners()
   }
  
@@ -14,7 +13,7 @@ export class NotificationService {
    */
   notify(ip: string): void {
     notifier.notify({
-      appID:   'DoS Detection System',  // Windows dùng appID, không phải appName
+      appID:   'DoS Detection System',
       title:   '⚠️ Phát hiện tấn công DoS',
       message: `IP ${ip} đã bị block tự động.\nVào dashboard để quản lý.`,
       icon:    path.join(__dirname, 'assets', 'warning.png'),

@@ -72,6 +72,11 @@ async function startServer() {
         await checkAdminPrivilege();
         await firewallService.syncFromFirewall()          // sync firewall state
         dosDetector.syncBlockedIPs(firewallService.getBlockedIPs())  // sync sang detector
+        setInterval(() => {
+            firewallService.syncFromFirewall().catch(() => {}).finally(() => {
+                dosDetector.syncBlockedIPs(firewallService.getBlockedIPs());
+            });
+        }, 5_000);
 
         // 2. Start server only after DB connection is successful
         app.listen(port, () => {
