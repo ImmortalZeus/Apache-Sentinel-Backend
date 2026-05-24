@@ -6,3 +6,13 @@
 **/.env
 
 **/tsconfig.build.tsbuildinfo
+
+.code-review-graph/
+
+.claude/
+
+CLAUDE.md
+
+.mcp.json
+
+.remember
