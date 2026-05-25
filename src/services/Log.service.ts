@@ -1,13 +1,16 @@
-import config from 'config.json';
+import rawConfig from 'config.json';
 import { CreateLogDtoType } from "dtos/log.dto"
-import { Log } from "entities/log.entity";
+import { Log } from "entities/Log.entity";
 import { getErrorMessage } from "utils/error/error";
+
+// Load environment-specific config
+const dbConfig = rawConfig.database
 
 class LogService {
     private readonly queue: CreateLogDtoType[] = []
 
     private get DB_BATCH_SIZE() {
-        return config.DB_BATCH_SIZE;
+        return dbConfig.DB_BATCH_SIZE;
     }
 
     private _isFlushing = false
@@ -49,11 +52,9 @@ class LogService {
 export const logService = new LogService()
 
 // Flush mỗi 5 giây
-async function startFlushLoop() {
+export async function startFlushLoop() {
     while (true) {
         await logService.flush()           // chờ flush xong
-        await new Promise(res => setTimeout(res, config.DB_FLUSH_INTERVAL))  // rồi mới delay
+        await new Promise(res => setTimeout(res, dbConfig.DB_FLUSH_INTERVAL))  // rồi mới delay
     }
 }
-
-void startFlushLoop()

@@ -22,7 +22,21 @@ export class NotificationService {
       wait:    true,  // cần true để nhận được click/close events
     })
   }
- 
+
+  /**
+   * Gửi Windows Toast Notification khi phát hiện DDoS.
+   */
+  notifyDDoS(type: string, message: string): void {
+    notifier.notify({
+      appID:   'DDoS Detection System',
+      title:   `🚨 Phát hiện tấn công DDoS (${type})`,
+      message: message,
+      icon:    path.join(__dirname, 'assets', 'warning.png'), // có thể dùng icon khác nếu có
+      sound:   true,
+      wait:    true,
+    })
+  }
+
   /**
    * Đăng ký event listener cho notification.
    * Có thể dùng để mở dashboard khi admin click vào notification.

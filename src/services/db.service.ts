@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { startFlushLoop } from "./Log.service";
 
 class DbService {
     private readonly mongoUri: string
@@ -34,6 +35,7 @@ class DbService {
         try {
             await mongoose.connect(uri)
             console.log(`✅ MongoDB Connected Successfully! Using Database: ${this.dbName}`)
+            void startFlushLoop(); // Start flushing only after connection
         } catch (error) {
             console.error("❎ MongoDB Connection Failed:", error)
             process.exit(1)
