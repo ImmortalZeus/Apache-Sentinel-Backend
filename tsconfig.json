@@ -31,5 +31,7 @@
     "noFallthroughCasesInSwitch": false,
     "resolveJsonModule": true
   },
-  "exclude": ["node_modules", "dist"]
+  "include": ["src"],
+  "include": ["src"],
+  "exclude": ["node_modules", "dist", "jest.config.ts"]
 }

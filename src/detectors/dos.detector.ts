@@ -184,6 +184,23 @@ export class DoSDetector {
         return false
     }
 
+    /**
+     * Block an IP address in the firewall and update the detector state.
+     * @param ip The IP address to block
+     */
+    async block(ip: string): Promise<void> {
+        // Block in firewall
+        await firewallService.block(ip);
+
+        // Update detector state
+        const now = Date.now();
+        const profile = this.getOrCreateProfile(ip, now);
+        profile.isBlocked = true;
+        profile.trustScore = 0;
+
+        console.info(`[DoS] ${ip} blocked via API`);
+    }
+
     unblock(ip: string): void {
         const profile = this.profiles.get(ip)
         if (!profile) return

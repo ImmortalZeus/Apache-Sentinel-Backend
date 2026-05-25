@@ -1,12 +1,13 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
 const execAsync = promisify(exec)
+import { dbService } from './db.service'
 
 const RULE_NAME = 'DoS-Block-List'
- 
+
 export class FirewallService {
     private readonly blockedIPs = new Set<string>()
-    
+
     async syncFromFirewall(): Promise<void> {
         try {
             const { stdout } = await execAsync(
@@ -36,7 +37,7 @@ export class FirewallService {
             throw err
         }
     }
-    
+
     /**
      * Block IP — update 1 rule duy nhất chứa toàn bộ danh sách IP.
      * Chặn tất cả protocol (TCP, UDP, ICMP, ...).
@@ -46,11 +47,13 @@ export class FirewallService {
             console.info(`[Firewall] ${ip} đã bị block trước đó, bỏ qua`)
             return
         }
-    
+
         this.blockedIPs.add(ip)
-    
+
         try {
             await this.syncRule()
+            // Record the block in database
+            await this.recordBlock(ip)
             console.warn(`[Firewall] Đã block IP: ${ip}`)
         } catch (err) {
             // Rollback nếu sync thất bại
@@ -60,7 +63,7 @@ export class FirewallService {
             throw err
         }
     }
-    
+
     /**
      * Unblock IP - xóa khỏi danh sách và update rule.
      */
@@ -69,11 +72,13 @@ export class FirewallService {
             console.info(`[Firewall] ${ip} không có trong danh sách block`)
             return
         }
-    
+
         this.blockedIPs.delete(ip)
-    
+
         try {
             await this.syncRule()
+            // Record the unblock in database
+            await this.recordUnblock(ip)
             console.info(`[Firewall] Đã unblock IP: ${ip}`)
         } catch (err) {
             // Rollback
@@ -83,15 +88,53 @@ export class FirewallService {
             throw err
         }
     }
-    
+
     isBlocked(ip: string): boolean {
         return this.blockedIPs.has(ip)
     }
-    
+
     getBlockedIPs(): string[] {
         return [...this.blockedIPs]
     }
-    
+
+    /**
+     * Record a block operation in the database
+     * @param ip The IP address that was blocked
+     */
+    async recordBlock(ip: string): Promise<void> {
+        try {
+            const BlockedIP = dbService.getBlockedIPModel()
+            await BlockedIP.create({
+                ip,
+                action: 'block',
+                timestamp: new Date()
+            })
+        } catch (error) {
+            console.error('Error recording block IP:', error)
+            // Don't throw here as we don't want to fail the block operation
+            // just because we couldn't record it
+        }
+    }
+
+    /**
+     * Record an unblock operation in the database
+     * @param ip The IP address that was unblocked
+     */
+    async recordUnblock(ip: string): Promise<void> {
+        try {
+            const BlockedIP = dbService.getBlockedIPModel()
+            await BlockedIP.create({
+                ip,
+                action: 'unblock',
+                timestamp: new Date()
+            })
+        } catch (error) {
+            console.error('Error recording unblock IP:', error)
+            // Don't throw here as we don't want to fail the unblock operation
+            // just because we couldn't record it
+        }
+    }
+
     /**
      * Sync firewall rule với danh sách IP hiện tại.
      * - Nếu danh sách rỗng → xóa rule
@@ -103,10 +146,10 @@ export class FirewallService {
             await this.deleteRule()
             return
         }
-    
+
         const ipList = [...this.blockedIPs].join(',')
         const ruleExists = await this.ruleExists()
-    
+
         if (ruleExists) {
             // Update rule hiện có
             await execAsync(
@@ -121,7 +164,7 @@ export class FirewallService {
             )
         }
     }
-    
+
     private async ruleExists(): Promise<boolean> {
         try {
             const { stdout } = await execAsync(
@@ -133,7 +176,7 @@ export class FirewallService {
             return false
         }
     }
-    
+
     private async deleteRule(): Promise<void> {
         try {
             await execAsync(
