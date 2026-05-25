@@ -1,5 +1,7 @@
 import os from 'os'
 
+import { ddosDetector } from './ddos.detector'
+
 // ─── Config ────────────────────────────────────────────────────────────────
 
 export interface DoSConfig {
@@ -230,6 +232,16 @@ export class DoSDetector {
      * | Suspicious   | perIpThreshold  | globalBaseThreshold (đã giảm)|
      */
     private calcEffectiveThreshold(profile: IPProfile, now: number): number {
+        // [PANIC MODE] Extreme throttling for non-trusted IPs during a volumetric flood
+        if (ddosDetector.isUnderAttack()) {
+            if (profile.trustScore >= this.config.trustedTrustScore) {
+                // Trusted users get a slight squeeze but remain largely unaffected
+                return Math.min(profile.perIpThreshold, this.config.baseThreshold * 0.8)
+            }
+            // Everyone else is crushed to a fraction of the baseline to shed load instantly
+            return Math.min(profile.perIpThreshold, this.config.baseThreshold * 0.2)
+        }
+
         const cpu = this.currentCPUUsage
         const cpuHigh = cpu > this.config.cpuHighThreshold
 
@@ -313,6 +325,15 @@ export class DoSDetector {
     private adjustGlobalThreshold(): void {
         this.currentCPUUsage = measureCPUUsage()
         const cpu = this.currentCPUUsage
+
+        // [PANIC MODE] Immediately crush threshold to minimum when DDoS flood is active.
+        // Don't wait for CPU to climb — react immediately to the alert signal.
+        if (ddosDetector.isUnderAttack()) {
+            const min = this.config.baseThreshold * 0.2
+            this.globalBaseThreshold = Math.max(min, this.globalBaseThreshold * 0.7)
+            return
+        }
+
         const max = this.config.baseThreshold * 1.2
         const min = this.config.baseThreshold * 0.2
 

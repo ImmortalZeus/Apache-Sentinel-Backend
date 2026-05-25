@@ -41,6 +41,21 @@ app.get('/', (req: Request, res: Response) => {
     res.send('Hello World! Apache Sentinel is running.');
 });
 
+// [PANIC MODE] Load Shedding Middleware
+// During Stage 1 DDoS, we block heavy processing to save the server
+app.use((req: Request, res: Response, next: NextFunction) => {
+    if (ddosDetector.isUnderAttack()) {
+        const heavyPaths = ['/api/stats', '/api/export', '/api/search'];
+        if (heavyPaths.some(path => req.path.startsWith(path))) {
+            res.status(503).send({
+                message: "System is under heavy load (Panic Mode). This feature is temporarily disabled."
+            });
+            return;
+        }
+    }
+    next();
+});
+
 // POST Route - Consolidated Log Processing
 app.post('/log', async (req: Request, res: Response) => {
     try {
@@ -52,15 +67,22 @@ app.post('/log', async (req: Request, res: Response) => {
             return;
         }
 
-        // 1. DDoS Analysis (Global, Coordinated, Subnet Strategies)
-        ddosDetector.check(lineData);
+        // 1. Check if this IP is already blocked (by subnet or individual block)
+        if (lineData.remoteIp && firewallService.isBlocked(lineData.remoteIp)) {
+            // Already blocked by firewall — skip all analysis
+            logService.add(lineData);
+            res.sendStatus(200);
+            return;
+        }
 
         // 2. DoS Analysis (Per-IP) and Firewall Execution
+        let isBlocked = false;
         if (lineData.remoteIp) {
-            // CRITICAL FIX: The await operator ensures the boolean result is evaluated, not the Promise object.
+            // Check if this specific IP is spamming
             const shouldBlock = await dosDetector.check(lineData.remoteIp);
 
             if (shouldBlock) {
+                isBlocked = true;
                 const alreadyBlocked = firewallService.isBlocked(lineData.remoteIp);
 
                 // Block the IP at the Layer 3 network level
@@ -73,7 +95,13 @@ app.post('/log', async (req: Request, res: Response) => {
             }
         }
 
-        // 3. Save Log to Database
+        // 3. DDoS Analysis (Global, Coordinated, Subnet Strategies)
+        // We ONLY count the request towards DDoS thresholds if it didn't come from an already-blocked DoS spammer
+        if (!isBlocked) {
+            ddosDetector.check(lineData);
+        }
+
+        // 4. Save Log to Database
         logService.add(lineData);
 
         res.sendStatus(200);
@@ -92,14 +120,20 @@ app.post('/log/batch', async (req: Request, res: Response) => {
 
             if (!lineData) continue;
 
-            // 1. DDoS Analysis (Global, Coordinated, Subnet Strategies)
-            ddosDetector.check(lineData);
+            // 1. Check if this IP is already blocked (by subnet or individual block)
+            if (lineData.remoteIp && firewallService.isBlocked(lineData.remoteIp)) {
+                // Already blocked by firewall — skip all analysis
+                logService.add(lineData);
+                continue;
+            }
 
             // 2. DoS Analysis (Per-IP) and Firewall Execution
+            let isBlocked = false;
             if (lineData.remoteIp) {
                 const shouldBlock = await dosDetector.check(lineData.remoteIp);
 
                 if (shouldBlock) {
+                    isBlocked = true;
                     const alreadyBlocked = firewallService.isBlocked(lineData.remoteIp);
 
                     // Block the IP at the Layer 3 network level
@@ -112,7 +146,13 @@ app.post('/log/batch', async (req: Request, res: Response) => {
                 }
             }
 
-            // 3. Save Log to Database
+            // 3. DDoS Analysis (Global, Coordinated, Subnet Strategies)
+            // We ONLY count the request towards DDoS thresholds if it didn't come from an already-blocked DoS spammer
+            if (!isBlocked) {
+                ddosDetector.check(lineData);
+            }
+
+            // 4. Save Log to Database
             logService.add(lineData);
         }
         res.sendStatus(200);

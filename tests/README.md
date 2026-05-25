@@ -1,85 +1,81 @@
-# DDoS Detection System - Test Suite
+# Apache Sentinel - Attack Simulator Tool
 
-This directory contains test scripts to verify all four detection strategies work correctly.
+The testing suite has been completely unified into a single, interactive PowerShell tool: `attack_tool.ps1` located at the root of the project.
+
+This tool simulates various DoS and DDoS attack vectors directly against the backend (or against an Apache server sitting in front of the backend) to validate rate-limiting, botnet detection, and automated firewall-blocking capabilities.
 
 ## Prerequisites
 
-1. Start the Apache Sentinel backend server:
+1. Start the Apache Sentinel backend server (must be run as Administrator on Windows to manipulate the firewall):
    ```bash
    cd Apache-Sentinel-Backend
    npm run dev
+
+   # Also start Apache server
+   ./httpd.exe
    ```
 
-2. Wait for the server to be ready (you should see: `Sentinel is running on http://localhost:3000`)
+2. Wait for the server to be ready (you should see: `[Server] Sentinel is running on http://localhost:3000`)
 
-## Running Tests
+## Running the Simulator
 
-Run each test in a separate terminal while the server is running.
+Open a **new PowerShell terminal** at (`tests/`) and run:
 
-### Test 1: Global Volumetric Flood
-```bash
-node test-1-global-flood.js
+```powershell
+.\attack_tool.ps1
 ```
 
-**Expected**: `[DDoS ALERT] Global Volumetric Flood detected`
+You will be greeted with an interactive menu.
+
+## Configuration (Menu `0`)
+Before launching an attack, you can configure the parameters dynamically without editing the code:
+- **Target URL**: (Default: `http://127.0.0.1`) — Set this to your Apache server IP or the backend log endpoint if testing direct injection.
+- **Requests**: (Default: 200) — How many requests to fire per attack.
+- **Delay (ms)**: (Default: 0) — Set a delay between requests to simulate slow-rate attacks.
 
 ---
 
-### Test 2: Coordinated Pattern Detection
-```bash
-node test-2-coordinated-pattern.js
-```
-**Expected**: `[DDoS ALERT] Coordinated botnet attack on /login from 15 distinct IPs`
+## Single-IP DoS Scenarios
+
+### `1` Normal Traffic
+Simulates legitimate user browsing (sends requests with a 500ms delay).
+- **Expected**: Backend allows traffic. Trust Score increases over time.
+
+### `2` Flash Crowd (DoS)
+Simulates a single user spamming F5 on the same URL rapidly.
+- **Expected**: Backend detects an anomaly. Trust Score drops. IP gets rate-limited, then blocked by the Windows Firewall. A native Toast Notification appears.
+
+### `3` HTTP Flood (DoS)
+Simulates a malicious HTTP Flood designed to bypass CDNs/caches by appending random query parameters (e.g., `/?q=AbCdEfGh`).
+- **Expected**: IP is blocked at Layer 3 by the Firewall.
 
 ---
 
-### Test 3: Subnet Volumetric Blocking
-```bash
-node test-3-subnet-blocking.js
-```
-**Expected**:
-- `[DDoS ALERT] Subnet Volumetric Attack detected from 192.168.100.0/24`
-- Verify firewall: `netsh advfirewall firewall show rule name="DoS-Block-List"`
+## Multi-IP DDoS Scenarios
 
-**Note**: The blocked subnet will auto-unblock after 15 minutes.
+### `4` Global Volumetric Flood (DDoS Stage 1)
+Sends massive traffic from completely random, spoofed global IPs (`X-Forwarded-For`).
+- **Expected**: Triggers `[!] DDoS ALERT: Global Volumetric Flood detected`.
+- **Mitigation**: The system enters **Panic Mode (Load Shedding)** for 15 minutes. Heavy endpoints return `503 Service Unavailable`, and all suspicious IPs are aggressively throttled down to 20% capacity.
 
----
+### `5` Coordinated Botnet (DDoS Stage 2)
+Simulates a bot swarm specifically targeting a non-existent endpoint (`/non-existent-login-path`) from many random IPs to trigger 404 errors.
+- **Expected**: Triggers `[!] DDoS ALERT: Coordinated attack`. 
+- **Mitigation**: Detects the high error ratio (>80%) and triggers a **Swarm Block**, instantly iterating through the botnet swarm and blocking all participating IPs via the Firewall.
 
-### Test 4: DoS Regression (Single IP)
-```bash
-node test-4-dos-regression.js
-```
-**Expected**:
-- `[DoS] 10.0.0.99 | anomaly=... | trust=...`
-- `[DoS] 10.0.0.99 BLOCKED`
-- `[Firewall] Đã block IP: 10.0.0.99`
+### `6` Subnet Attack (DDoS Stage 3)
+Simulates an attack originating entirely from a single Class C subnet (e.g., `10.0.50.0/24`).
+- **Expected**: Triggers `[!] DDoS ALERT: Subnet Volumetric Attack`.
+- **Mitigation**: The system automatically initiates a temporary block on the entire `/24` subnet. If the subnet attacks again later, the TTL duration increases exponentially (15 mins → 1 hr → 4 hrs).
 
 ---
-
-### Run All Tests
-```bash
-node test-all.js
-```
-
-## Test Configuration
-
-All tests use development thresholds defined in `src/config.json`:
-- `GLOBAL_RATE_THRESHOLD`: 100 requests
-- `COORDINATED_DISTINCT_IP_THRESHOLD`: 10 distinct IPs
-- `SUBNET_RATE_THRESHOLD`: 50 requests per subnet
-
-To test with production thresholds, set `NODE_ENV=production` before starting the server.
 
 ## Cleanup
 
-After testing, you may want to clear blocked IPs from the firewall:
+If you need to reset the system state during testing without restarting the server, you can trigger the debug reset route (only available when `NODE_ENV=development`):
 
 ```powershell
-netsh advfirewall firewall delete rule name="DoS-Block-List"
+Invoke-WebRequest -Method Post -Uri "http://localhost:3000/debug/reset"
 ```
 
-Or run the cleanup script (if implemented):
-
-```bash
-node cleanup.js
-```
+This will clear all blocked IPs, purge the offense histories, and wipe the Windows Firewall rules.

@@ -2,6 +2,11 @@ import notifier, { NotificationCallback } from 'node-notifier'
 import path from 'path'
 
 type NotificationEvent = 'click' | 'timeout' | 'close'
+
+// ─── Rate Limiting ───────────────────────────────────────────────────────
+// Prevents notification spam by enforcing a minimum interval between notifications.
+const lastNotificationTime = new Map<string, number>()
+const NOTIFICATION_COOLDOWN_MS = 30_000 // 30 seconds cooldown per alert type
  
 export class NotificationService {
   constructor() {
@@ -13,6 +18,13 @@ export class NotificationService {
    * Gửi Windows Toast Notification khi phát hiện DoS.
    */
   notify(ip: string): void {
+    const now = Date.now()
+    const lastTime = lastNotificationTime.get(`dos:${ip}`) || 0
+
+    if (now - lastTime < NOTIFICATION_COOLDOWN_MS) return
+
+    lastNotificationTime.set(`dos:${ip}`, now)
+
     notifier.notify({
       appID:   'DoS Detection System',  // Windows dùng appID, không phải appName
       title:   '⚠️ Phát hiện tấn công DoS',
@@ -27,6 +39,13 @@ export class NotificationService {
    * Gửi Windows Toast Notification khi phát hiện DDoS.
    */
   notifyDDoS(type: string, message: string): void {
+    const now = Date.now()
+    const lastTime = lastNotificationTime.get(`ddos:${type}`) || 0
+
+    if (now - lastTime < NOTIFICATION_COOLDOWN_MS) return
+
+    lastNotificationTime.set(`ddos:${type}`, now)
+
     notifier.notify({
       appID:   'DDoS Detection System',
       title:   `🚨 Phát hiện tấn công DDoS (${type})`,

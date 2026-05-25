@@ -1,5 +1,6 @@
 import rawConfig from '../config.json';
 import { firewallService } from '../services/firewall.service';
+import { notificationService } from '../services/notification.service';
 import { ILog } from '../entities/Log.entity';
 
 // Load environment-specific config
@@ -16,25 +17,65 @@ class DDoSDetector {
     // Strategy 2: Coordinated Pattern Map<normalizedUrl, { timestamps, errorTimestamps, ipLastSeen }>
     // UPDATED: Now tracks errorCount to differentiate Flash Crowds from true botnets
     private urlPatterns = new Map<string, { timestamps: number[], errorTimestamps: number[], ipLastSeen: Map<string, number> }>();
-    
+
     // Strategy 3: Proactive Subnet Volume Tracking Map<subnetCidr, timestamps[]>
     private subnetVolumeTracker = new Map<string, number[]>();
+
+    // ─── Panic Mode (Stage 1 Mitigation) ───
+    private panicModeActive = false;
+    private panicModeStartTime = 0;
+    private readonly PANIC_MODE_DURATION_MS = ddosConfig.PANIC_MODE_DURATION_MS ?? 15 * 60 * 1000;
+    private readonly PANIC_MODE_COOLDOWN_MS = ddosConfig.PANIC_MODE_COOLDOWN_MS ?? 5 * 60 * 1000;
 
     constructor() {
         // Run garbage collection every 5 seconds to prevent memory leaks
         setInterval(() => this.cleanup(), 5000);
-    }
 
+        // Check Panic Mode expiration every 10 seconds
+        setInterval(() => this.checkPanicModeStatus(), 10000);
+    }
     /**
-     * Main entry point called for every log line
+     * Main entry point called for every log line.
+     * Uses the actual Apache log timestamp to prevent replay false-positives.
      */
     public check(log: ILog): void {
-        const now = Date.now();
+        // Extract the actual log time — falling back to current time only if missing
+        const now = log.time ? new Date(log.time).getTime() : Date.now();
         this.checkGlobalRate(now);
-        
+
         if (log.requestUrl && log.remoteIp) {
             this.checkCoordinatedPattern(log.requestUrl, log.remoteIp, log.responseStatusCode, now);
             this.checkSubnetVolume(log.remoteIp, now);
+        }
+    }
+
+    // ─── Global State Access ───
+    public isUnderAttack(): boolean {
+        return this.panicModeActive;
+    }
+
+    private triggerPanicMode(now: number): void {
+        if (this.panicModeActive) return;
+
+        // Prevent rapid re-triggering (Cooldown)
+        if (now - this.panicModeStartTime < this.PANIC_MODE_DURATION_MS + this.PANIC_MODE_COOLDOWN_MS) {
+            return;
+        }
+
+        this.panicModeActive = true;
+        this.panicModeStartTime = now;
+
+        console.warn(`[!!!] SYSTEM ENTERING PANIC MODE [!!!]`);
+        console.warn(`All systems hyper-aggressive for the next ${this.PANIC_MODE_DURATION_MS / 60000} minutes.`);
+    }
+
+    private checkPanicModeStatus(): void {
+        if (!this.panicModeActive) return;
+
+        if (Date.now() - this.panicModeStartTime > this.PANIC_MODE_DURATION_MS) {
+            this.panicModeActive = false;
+            console.info(`[v] Panic Mode Deactivated. Traffic has normalized.`);
+            notificationService.notifyDDoS("System Normal", "Panic Mode Deactivated. Traffic has normalized.");
         }
     }
 
@@ -46,9 +87,15 @@ class DDoSDetector {
         */
         this.globalTimestamps.push(now);
         if (this.globalTimestamps.length > ddosConfig.GLOBAL_RATE_THRESHOLD) {
-            console.warn(`[!] DDoS ALERT: Global Volumetric Flood detected: >${ddosConfig.GLOBAL_RATE_THRESHOLD} reqs / ${ddosConfig.GLOBAL_RATE_WINDOW_MS}ms.`);
+            const msg = `[!] DDoS ALERT: Global Volumetric Flood detected: >${ddosConfig.GLOBAL_RATE_THRESHOLD} reqs / ${ddosConfig.GLOBAL_RATE_WINDOW_MS}ms.`;
+            console.warn(msg);
+            notificationService.notifyDDoS("Volumetric Flood", msg);
+
+            // Trigger Panic Mode
+            this.triggerPanicMode(now);
+
             // Flush to prevent console spam
-            this.globalTimestamps = []; 
+            this.globalTimestamps = [];
         }
     }
 
@@ -58,7 +105,7 @@ class DDoSDetector {
         * Strategy 2: Coordinated Pattern Map
             * - Tracks request patterns per normalized URL.
             * - If a URL receives requests from many distinct IPs with a high error ratio, flags as potential botnet attack.
-             * - Differentiates from Flash Crowds by analyzing error rates (e.g., 80%+ errors likely indicate bots). 
+             * - Differentiates from Flash Crowds by analyzing error rates (e.g., 80%+ errors likely indicate bots).
         */
         const url = this.normalizeUrl(rawUrl);
 
@@ -80,7 +127,14 @@ class DDoSDetector {
             const errorRatioThreshold = ddosConfig.COORDINATED_ERROR_RATIO_THRESHOLD ?? 0.8;
 
             if (errorRatio >= errorRatioThreshold) {
-                console.warn(`[!] DDoS ALERT: Coordinated attack on ${url}. IPs: ${data.ipLastSeen.size}. Error Rate: ${(errorRatio * 100).toFixed(1)}%`);
+                const msg = `[!] DDoS ALERT: Coordinated attack on ${url}. IPs: ${data.ipLastSeen.size}. Error Rate: ${(errorRatio * 100).toFixed(1)}%`;
+                console.warn(msg);
+                notificationService.notifyDDoS("Coordinated Botnet", msg);
+
+                // [SWARM BLOCK] Enforce: Block every IP in the botnet swarm at Layer 3
+                for (const ip of data.ipLastSeen.keys()) {
+                    firewallService.block(ip).catch(err => console.error(`[!] Failed to block swarm IP ${ip}:`, err));
+                }
             } else {
                 console.info(`[v] Flash Crowd: High traffic on ${url}, but error rate is normal (${(errorRatio * 100).toFixed(1)}%). Allowed.`);
             }
@@ -109,8 +163,10 @@ class DDoSDetector {
         timestamps.push(now);
 
         if (timestamps.length > ddosConfig.SUBNET_RATE_THRESHOLD) {
-            console.warn(`[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}. Initiating temporary block.`);
-            
+            const msg = `[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}. Initiating temporary block.`;
+            console.warn(msg);
+            notificationService.notifyDDoS("Subnet Attack", msg);
+
             // Trigger Layer 3 block with TTL
             firewallService.blockSubnet(subnet)
                 .catch(err => console.error(err));
