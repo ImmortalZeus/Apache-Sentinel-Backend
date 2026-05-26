@@ -16,8 +16,7 @@ import { checkAdminPrivilege } from "utils/checkAdminPrivilege";
 import { dosDetector } from './detectors/dos.detector';
 import { ddosDetector } from './detectors/ddos.detector';
 
-
-const env = process.env.NODE_ENV === 'production' ? 'production' : 'development'
+// Configuration
 const serverConfig   = rawConfig.server
 
 const app = express();
@@ -35,6 +34,23 @@ app.use(nocache());
 app.use(express.static('public'));
 app.set('etag', false);
 app.disable('view cache');
+
+// DDoS Event Listeners
+ddosDetector.on('block-ip', async (ip: string) => {
+    try {
+        await firewallService.block(ip);
+    } catch (err) {
+        console.error(`[Server] Failed to execute DDoS IP block for ${ip}:`, err);
+    }
+});
+
+ddosDetector.on('block-subnet', async (subnet: string) => {
+    try {
+        await firewallService.blockSubnet(subnet);
+    } catch (err) {
+        console.error(`[Server] Failed to execute DDoS Subnet block for ${subnet}:`, err);
+    }
+});
 
 // GET Route - Health Check
 app.get('/', (req: Request, res: Response) => {
@@ -66,11 +82,17 @@ app.post('/log', async (req: Request, res: Response) => {
             res.status(400).send({ message: "Failed to parse log" });
             return;
         }
+        
+        // Convert Mongoose Document to plain object if necessary to avoid issues with nested properties
+        const safeLogData = typeof (lineData as any).toObject === 'function' 
+            ? (lineData as any).toObject() 
+            : lineData;
 
         // 1. Check if this IP is already blocked (by subnet or individual block)
         if (lineData.remoteIp && firewallService.isBlocked(lineData.remoteIp)) {
             // Already blocked by firewall — skip all analysis
-            logService.add(lineData);
+            //logService.add(lineData);
+            logService.add(safeLogData);
             res.sendStatus(200);
             return;
         }
@@ -102,7 +124,7 @@ app.post('/log', async (req: Request, res: Response) => {
         }
 
         // 4. Save Log to Database
-        logService.add(lineData);
+        logService.add(safeLogData);
 
         res.sendStatus(200);
     } catch (err) {
@@ -120,10 +142,15 @@ app.post('/log/batch', async (req: Request, res: Response) => {
 
             if (!lineData) continue;
 
+            // Convert Mongoose Document to plain object if necessary to avoid issues with nested properties
+            const safeLogData = typeof (lineData as any).toObject === 'function' 
+                ? (lineData as any).toObject() 
+                : lineData;
+
             // 1. Check if this IP is already blocked (by subnet or individual block)
             if (lineData.remoteIp && firewallService.isBlocked(lineData.remoteIp)) {
                 // Already blocked by firewall — skip all analysis
-                logService.add(lineData);
+                logService.add(safeLogData);
                 continue;
             }
 
@@ -153,7 +180,7 @@ app.post('/log/batch', async (req: Request, res: Response) => {
             }
 
             // 4. Save Log to Database
-            logService.add(lineData);
+            logService.add(safeLogData);
         }
         res.sendStatus(200);
     } catch (err) {
@@ -164,8 +191,10 @@ app.post('/log/batch', async (req: Request, res: Response) => {
 
 if (process.env.NODE_ENV === 'development') {
     app.post('/debug/reset', async (req: Request, res: Response) => {
+        // Reset detectors and firewall state for testing purposes
+        dosDetector.reset();
+        ddosDetector.reset();
         await firewallService.reset();
-        // Also reset detectors if they have reset methods, or just assume firewall reset is enough for tests
         res.sendStatus(200);
     });
 }

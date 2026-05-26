@@ -383,6 +383,13 @@ export class DoSDetector {
             }
         }
     }
+
+    public reset(): void {
+        this.profiles.clear()
+        this.globalBaseThreshold = this.config.baseThreshold
+        this.currentCPUUsage = 0
+        console.info('[DoS] Detector state reset')
+    }
 }
 
 export const dosDetector = new DoSDetector()

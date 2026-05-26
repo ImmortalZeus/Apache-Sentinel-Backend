@@ -1,5 +1,5 @@
 import rawConfig from '../config.json';
-import { firewallService } from '../services/firewall.service';
+import { EventEmitter } from 'events'; 
 import { notificationService } from '../services/notification.service';
 import { ILog } from '../entities/Log.entity';
 
@@ -10,7 +10,7 @@ const ddosConfig     = {
     ...(rawConfig.ddos as any)[env]         // environment-specific values
 }
 
-class DDoSDetector {
+class DDoSDetector extends EventEmitter{
     // Strategy 1: Global Volumetric Tracker
     private globalTimestamps: number[] = [];
 
@@ -28,6 +28,8 @@ class DDoSDetector {
     private readonly PANIC_MODE_COOLDOWN_MS = ddosConfig.PANIC_MODE_COOLDOWN_MS ?? 5 * 60 * 1000;
 
     constructor() {
+        super(); 
+
         // Run garbage collection every 5 seconds to prevent memory leaks
         setInterval(() => this.cleanup(), 5000);
 
@@ -86,6 +88,11 @@ class DDoSDetector {
             * - If total requests in the window exceed a threshold, triggers a global alert.
         */
         this.globalTimestamps.push(now);
+        
+        // Remove timestamps outside the sliding window 
+        const cutoff = now - ddosConfig.GLOBAL_RATE_WINDOW_MS
+        this.globalTimestamps = this.globalTimestamps.filter(t => t > cutoff)
+
         if (this.globalTimestamps.length > ddosConfig.GLOBAL_RATE_THRESHOLD) {
             const msg = `[!] DDoS ALERT: Global Volumetric Flood detected: >${ddosConfig.GLOBAL_RATE_THRESHOLD} reqs / ${ddosConfig.GLOBAL_RATE_WINDOW_MS}ms.`;
             console.warn(msg);
@@ -131,9 +138,9 @@ class DDoSDetector {
                 console.warn(msg);
                 notificationService.notifyDDoS("Coordinated Botnet", msg);
 
-                // [SWARM BLOCK] Enforce: Block every IP in the botnet swarm at Layer 3
-                for (const ip of data.ipLastSeen.keys()) {
-                    firewallService.block(ip).catch(err => console.error(`[!] Failed to block swarm IP ${ip}:`, err));
+                // [EVENT EMIT] Broadcast the IPs to block instead of calling firewall directly
+                for (const attackerIp of data.ipLastSeen.keys()) {
+                    this.emit('block-ip', attackerIp);
                 }
             } else {
                 console.info(`[v] Flash Crowd: High traffic on ${url}, but error rate is normal (${(errorRatio * 100).toFixed(1)}%). Allowed.`);
@@ -162,14 +169,18 @@ class DDoSDetector {
         const timestamps = this.subnetVolumeTracker.get(subnet)!;
         timestamps.push(now);
 
+        // Remove timestamps outside the sliding window
+        const cutoff = now - ddosConfig.GLOBAL_RATE_WINDOW_MS
+        const recent = timestamps.filter(t => t > cutoff)
+        this.subnetVolumeTracker.set(subnet, recent)
+
         if (timestamps.length > ddosConfig.SUBNET_RATE_THRESHOLD) {
-            const msg = `[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}. Initiating temporary block.`;
+            const msg = `[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}.`;
             console.warn(msg);
             notificationService.notifyDDoS("Subnet Attack", msg);
 
-            // Trigger Layer 3 block with TTL
-            firewallService.blockSubnet(subnet)
-                .catch(err => console.error(err));
+            // [EVENT EMIT] Broadcast the subnet to block
+            this.emit('block-subnet', subnet);
 
             // Remove from tracking to avoid duplicate block commands
             this.subnetVolumeTracker.delete(subnet);
@@ -226,6 +237,15 @@ class DDoSDetector {
         if (!this.isIPv4(ip)) return null;
         const octets = ip.split('.');
         return `${octets[0]}.${octets[1]}.${octets[2]}.0/${ddosConfig.SUBNET_PREFIX_LENGTH}`;
+    }
+
+    public reset(): void {
+        this.globalTimestamps = []
+        this.urlPatterns.clear()
+        this.subnetVolumeTracker.clear()
+        this.panicModeActive = false
+        this.panicModeStartTime = 0
+        console.info('[DDoS] Detector state reset')
     }
 }
 
