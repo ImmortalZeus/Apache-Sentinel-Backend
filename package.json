@@ -4,16 +4,17 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "test": "jest",
     "dev": "tsx watch src/server.ts",
     "build": "tsc --project tsconfig.build.json && tsc-alias -p tsconfig.build.json",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "tsx watch src/test.ts"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
@@ -35,7 +36,25 @@
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
   },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  },
   "dependencies": {
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mongoose": "^9.3.3",

@@ -6,21 +6,3 @@
 **/.env
 
 **/tsconfig.build.tsbuildinfo
-
-.code-review-graph/
-
-.claude/
-
-CLAUDE.md
-
-.mcp.json
-
-.remember
-
-data/
-
-docs/superpowers/
-
-plans/
-
-src/__tests__

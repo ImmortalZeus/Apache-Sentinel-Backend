@@ -1,21 +1,21 @@
-import { ILog, Log } from "entities/log.entity";
-import { logService } from "services/log.service";
+import { ILog, Log } from "entities/Log.entity";
 
 class LineParser {
-    //private readonly regex: string = "^" + "(?<RemoteIp>-|(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])(?:\\.(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])){3}|(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])))\\s(?<RemoteLogName>-|\\S+)\\s(?<RemoteUser>-|\\S+)\\s(\\[(?<DateTime>(?<Date>\\d{2})\\/\\w{3}\\/\\d{4}:(?<Time>\\d{2}:\\d{2}:\\d{2})\\s(?<Timezone>[+-]\\d{4}))\\])\\s(\\\"(?<Request>(?<RequestMethod>GET|POST|HEAD|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)\\s(?<RequestUrl>\\/[^\\s]*)\\s(?<HttpVer>HTTP/\\d\\.\\d))\\\")\\s(?<Response>-|\\d{3})\\s(?<Bytes>-|\\d+)\\s\\\"(?<Referrer>[^\\s]+)\\\"\\s\\\"(?<UserAgent>[^\\\"]*+)\\\"(?:\\s\\\"(?<ForwardFor>[^\\\"]*+)\\\")?" + "$";
-
-    // private readonly regex: RegExp = /^(?<RemoteIp>-|(?:1?\d{1,2}|2[0-4]\d|25[0-5])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){3}|(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])))\s(?<RemoteLogName>-|\S+)\s(?<RemoteUser>-|\S+)\s(\[(?<DateTime>(?<Date>\d{2})\/\w{3}\/\d{4}:(?<Time>\d{2}:\d{2}:\d{2})\s(?<Timezone>[+-]\d{4}))\])\s(\"(?<Request>(?<RequestMethod>GET|POST|HEAD|PUT|DELETE|CONNECT|OPTIONS|TRACE|PATCH)\s(?<RequestUrl>\/[^\s]*)\s(?<HttpVer>HTTP\/\d\.\d))\")\s(?<Response>-|\d{3})\s(?<Bytes>-|\d+)\s\"(?<Referrer>[^\s]+)\"\s\"(?<UserAgent>[^\"]*)\"(?:\s\"(?<ForwardFor>[^\"]*)\")?$/;
+    private readonly MONTH_MAP: Record<string, string> = {
+        Jan: '01', Feb: '02', Mar: '03', Apr: '04',
+        May: '05', Jun: '06', Jul: '07', Aug: '08',
+        Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+    }
 
     private readonly regex: RegExp = new RegExp(
     [
         '^',
-        // 1. Nhóm RemoteIp (Hỗ trợ '-', IPv4, và IPv6 cực kỳ chi tiết)
         '(?<RemoteIp>',
-        '-|',                                           // Dấu gạch ngang hoặc...
-        '(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])',             // IPv4 Part 1
-        '(?:\\.(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])){3}|',  // IPv4 Parts 2-4
-        '(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|',   // IPv6 chuẩn
-        '([0-9a-fA-F]{1,4}:){1,7}:|',                   // IPv6 rút gọn các loại...
+        '-|',
+        '(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])',
+        '(?:\\.(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])){3}|',
+        '(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|',
+        '([0-9a-fA-F]{1,4}:){1,7}:|',
         '([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|',
         '([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|',
         '([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|',
@@ -28,50 +28,50 @@ class LineParser {
         '([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])',
         '))',
         '\\s',
-
-        // 2. RemoteLogName và RemoteUser
         '(?<RemoteLogName>-|\\S+)\\s',
         '(?<RemoteUser>-|\\S+)\\s',
-
-        // 3. DateTime [20/Oct/2023:14:00:00 +0700]
         '(\\[(?<DateTime>(?<Date>\\d{2})\\/\\w{3}\\/\\d{4}:(?<Time>\\d{2}:\\d{2}:\\d{2})\\s(?<Timezone>[+-]\\d{4}))\\])\\s',
-
-        // 4. Request "GET /url HTTP/1.1"
-        // '(\\\"(?<Request>(?<RequestMethod>[A-Z][A-Z0-9_-]*)\\s(?<RequestUrl>\\/[^\\s]*)\\s(?<HttpVer>HTTP\\/\\d\\.\\d))\\\")\\s',
-
         '(\\\"(?<Request>' +
             '-' +
             '|' +
             '(?:' +
             '(?<RequestMethod>[A-Z][A-Z0-9_-]*)\\s' +
             '(?<RequestUrl>\\S+)' +
-            '(?:\\s(?<HttpVer>HTTP\\/\\d(?:\\.\\d)?))?' +
+            '(?:\\s(?<HttpVer>HTTP\\/\\d\\.\\d))?' +
             ')' +
             '|' +
             '(?<RawRequest>[^\\"]*)' +
         ')\\\")\\s',
-
-        // 5. Response Code và Bytes
         '(?<Response>-|\\d{3})\\s',
         '(?<Bytes>-|\\d+)\\s',
-
-        // 6. Referrer và User Agent
         '\\\"(?<Referrer>[^\\s]+)\\\"\\s',
         '\\\"(?<UserAgent>[^\\\"]*)\\\"',
-
-        // 7. X-Forwarded-For (Optional)
         '(?:\\s\\\"(?<ForwardFor>[^\\\"]*)\\\")?',
         '$'
     ].join('')
-    );
+    )
 
-    run(line: string): ILog {
-        const match = line.match(this.regex);
+    private parseApacheDate(dateStr: string): Date {
+        // Input: "14/Apr/2026:10:00:00 +0700"
+        const match = dateStr.match(
+            /(\d{2})\/(\w{3})\/(\d{4}):(\d{2}:\d{2}:\d{2}) ([+-]\d{4})/
+        )
+        if (!match) return new Date(NaN)
+
+        const [, day, month, year, time, tz] = match
+        const monthNum = this.MONTH_MAP[month] ?? '01'
+
+        // Produces: "2026-04-14T10:00:00+0700"
+        return new Date(`${year}-${monthNum}-${day}T${time}${tz}`)
+    }
+
+    run(line: string): ILog | null {
+        const match = line.match(this.regex)
 
         if (match?.groups) {
-            const groups = match.groups;
+            const groups = match.groups
             const log = new Log({
-                time: new Date(groups['DateTime'].replace('/', ' ').replace('/', ' ').replace(':', ' ')),
+                time: this.parseApacheDate(groups['DateTime']),
                 remoteIp: groups['RemoteIp'],
                 remoteUser: groups['RemoteUser'],
                 request: groups['Request'],
@@ -83,10 +83,11 @@ class LineParser {
                 requestUrl: groups['RequestUrl'] || null,
                 httpVersion: groups['HttpVer'] || null
             })
-            logService.add(log);
-            return log;
+            return log
         }
-        throw new Error("Can't parse the given string");
+
+        console.error('Failed to parse line:', line.substring(0, 100))
+        return null
     }
 }
 

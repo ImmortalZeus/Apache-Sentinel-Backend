@@ -12,15 +12,6 @@ export interface ILog extends Document {
     requestMethod: string;
     requestUrl: string;
     httpVersion: string;
-    countryShort: string;
-    countryLong: string;
-    region: string;
-    city: string;
-    zipCode: string;
-    timeZone: string;
-    browser: string;
-    os: string;
-    device: string;
 }
 
 const LogSchema = new Schema<ILog>({
@@ -35,15 +26,11 @@ const LogSchema = new Schema<ILog>({
     requestMethod:          { type: String, required: false },
     requestUrl:             { type: String, required: false },
     httpVersion:            { type: String, required: false },
-    countryShort:           { type: String, required: false },
-    countryLong:            { type: String, required: false },
-    region:                 { type: String, required: false },
-    city:                   { type: String, required: false },
-    zipCode:                { type: String, required: false },
-    timeZone:               { type: String, required: false },
-    browser:                { type: String, required: false },
-    os:                     { type: String, required: false },
-    device:                 { type: String, required: false },
 })
 
-export const Log = mongoose.model<ILog>('Log', LogSchema)
+// Indexes for efficient querying
+LogSchema.index({ remoteIp: 1 });
+LogSchema.index({ time: -1 });
+LogSchema.index({ remoteIp: 1, time: -1 });
+
+export const Log = mongoose.model<ILog>('Log', LogSchema)   

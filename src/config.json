@@ -1,7 +1,40 @@
 {
-    "PORT": 3000,
-    "DB_BATCH_SIZE": 1000,
-    "DB_FLUSH_INTERVAL": 5000,
-    "WINDOW_MS": 10000,
-    "THRESHOLD": 120
+    "server": {
+        "PORT": 3000
+    },
+
+    "database": {
+        "DB_BATCH_SIZE": 1000,
+        "DB_FLUSH_INTERVAL": 5000
+    },
+
+    "dos": {
+        "WINDOW_MS": 10000,
+        "THRESHOLD": 120
+    },
+
+    "ddos": {
+        "COORDINATED_ERROR_RATIO_THRESHOLD": 0.8,
+        "SUBNET_PREFIX_LENGTH": 24,
+
+        "development": {
+            "GLOBAL_RATE_THRESHOLD": 100,
+            "GLOBAL_RATE_WINDOW_MS": 10000,
+            "COORDINATED_DISTINCT_IP_THRESHOLD": 10,
+            "SUBNET_RATE_THRESHOLD": 50,
+            "SUBNET_BLOCK_BASE_TTL_MS": 60000,
+            "PANIC_MODE_DURATION_MS": 60000,
+            "PANIC_MODE_COOLDOWN_MS": 60000
+        },
+
+        "production": {
+            "GLOBAL_RATE_THRESHOLD": 800,
+            "GLOBAL_RATE_WINDOW_MS": 10000,
+            "COORDINATED_DISTINCT_IP_THRESHOLD": 30,
+            "SUBNET_RATE_THRESHOLD": 120,
+            "SUBNET_BLOCK_BASE_TTL_MS": 900000,
+            "PANIC_MODE_DURATION_MS": 900000,
+            "PANIC_MODE_COOLDOWN_MS": 300000
+        }
+    }
 }
