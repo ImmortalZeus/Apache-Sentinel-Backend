@@ -91,6 +91,27 @@ class LogService {
         return await Log.find().sort({ time: -1 }).limit(limit);
     }
 
+    async getLogs({ page, limit }: { page: number; limit: number }) {
+        const pageNum = Math.max(1, page);
+        const limitNum = Math.min(1000, Math.max(10, limit));
+        const skip = (pageNum - 1) * limitNum;
+
+        const [logs, total] = await Promise.all([
+            Log.find().sort({ time: -1 }).skip(skip).limit(limitNum),
+            Log.countDocuments()
+        ]);
+
+        return {
+            data: logs,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum)
+            }
+        };
+    }
+
 }
 
 export const logService = new LogService()
