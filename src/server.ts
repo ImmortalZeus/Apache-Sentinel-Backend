@@ -277,8 +277,8 @@ app.post('/api/firewall/unblock', async (req: Request, res: Response) => {
     }
     
     try {
-        await firewallService.unblock(ip);
-        dosDetector.unblock(ip); // Reset the internal trust score
+        // dosDetector.unblock() emits event, listener handles firewallService.unblock()
+        dosDetector.unblock(ip);
         res.sendStatus(200);
     } catch (err) {
         console.error(`[API] Failed to unblock ${ip}:`, err);
