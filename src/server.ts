@@ -56,6 +56,28 @@ ddosDetector.on('block-subnet', async (subnet: string) => {
     }
 });
 
+// DoS Event Listeners
+dosDetector.on('dos-block-ip', async (ip: string) => {
+    try {
+        const alreadyBlocked = firewallService.isBlocked(ip);
+        await firewallService.block(ip);
+
+        if (!alreadyBlocked) {
+            notificationService.notify(ip);
+        }
+    } catch (err) {
+        console.error(`[Server] Failed to execute DoS IP block for ${ip}:`, err);
+    }
+});
+
+dosDetector.on('dos-unblock-ip', async (ip: string) => {
+    try {
+        await firewallService.unblock(ip);
+    } catch (err) {
+        console.error(`[Server] Failed to execute DoS IP unblock for ${ip}:`, err);
+    }
+});
+
 // GET Route - Health Check
 app.get('/', (req: Request, res: Response) => {
     res.send('Hello World! Apache Sentinel is running.');
