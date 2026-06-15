@@ -6,7 +6,7 @@ type NotificationEvent = 'click' | 'timeout' | 'close'
 // ─── Rate Limiting ───────────────────────────────────────────────────────
 // Prevents notification spam by enforcing a minimum interval between notifications.
 const lastNotificationTime = new Map<string, number>()
-const NOTIFICATION_COOLDOWN_MS = 30_000 // 30 seconds cooldown per alert type
+const NOTIFICATION_COOLDOWN_MS = 1_000 // 1 seconds cooldown per alert type
  
 export class NotificationService {
   constructor() {
