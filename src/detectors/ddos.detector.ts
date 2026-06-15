@@ -135,7 +135,7 @@ class DDoSDetector extends EventEmitter{
 
                 // [EVENT EMIT] Broadcast the IPs to block instead of calling firewall directly
                 for (const attackerIp of data.ipLastSeen.keys()) {
-                    this.emit('block-ip', attackerIp);
+                    this.emit('ddos-block-ip', attackerIp);
                 }
             } else {
                 console.info(`[v] Flash Crowd: High traffic on ${url}, but error rate is normal (${(errorRatio * 100).toFixed(1)}%). Allowed.`);
@@ -177,7 +177,7 @@ class DDoSDetector extends EventEmitter{
             notificationService.notifyDDoS("Subnet Attack", msg);
 
             // [EVENT EMIT] Broadcast the subnet to block
-            this.emit('block-subnet', subnet);
+            this.emit('ddos-block-subnet', subnet);
 
             // Remove from tracking to avoid duplicate block commands
             this.subnetVolumeTracker.delete(subnet);
@@ -234,6 +234,18 @@ class DDoSDetector extends EventEmitter{
         if (!this.isIPv4(ip)) return null;
         const octets = ip.split('.');
         return `${octets[0]}.${octets[1]}.${octets[2]}.0/${cfg().SUBNET_PREFIX_LENGTH}`;
+    }
+
+    // --- Unblock Methods ---
+
+    public unblockIp(ip: string): void {
+        console.info(`[DDoS] Unblocking IP: ${ip}`);
+        this.emit('ddos-unblock-ip', ip);
+    }
+
+    public unblockSubnet(subnet: string): void {
+        console.info(`[DDoS] Unblocking subnet: ${subnet}`);
+        this.emit('ddos-unblock-subnet', subnet);
     }
 
     public reset(): void {

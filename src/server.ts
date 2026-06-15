@@ -40,7 +40,7 @@ app.set('etag', false);
 app.disable('view cache');
 
 // DDoS Event Listeners
-ddosDetector.on('block-ip', async (ip: string) => {
+ddosDetector.on('ddos-block-ip', async (ip: string) => {
     try {
         await firewallService.block(ip);
     } catch (err) {
@@ -48,11 +48,27 @@ ddosDetector.on('block-ip', async (ip: string) => {
     }
 });
 
-ddosDetector.on('block-subnet', async (subnet: string) => {
+ddosDetector.on('ddos-block-subnet', async (subnet: string) => {
     try {
         await firewallService.blockSubnet(subnet);
     } catch (err) {
         console.error(`[Server] Failed to execute DDoS Subnet block for ${subnet}:`, err);
+    }
+});
+
+ddosDetector.on('ddos-unblock-ip', async (ip: string) => {
+    try {
+        await firewallService.unblock(ip);
+    } catch (err) {
+        console.error(`[Server] Failed to execute DDoS IP unblock for ${ip}:`, err);
+    }
+});
+
+ddosDetector.on('ddos-unblock-subnet', async (subnet: string) => {
+    try {
+        await firewallService.unblockSubnet(subnet);
+    } catch (err) {
+        console.error(`[Server] Failed to execute DDoS Subnet unblock for ${subnet}:`, err);
     }
 });
 
