@@ -245,10 +245,12 @@ app.get('/api/stats', async (req: Request, res: Response) => {
 // 2. Logs Explorer
 app.get('/api/logs', async (req: Request, res: Response) => {
     try {
-        const recentLogs = await logService.getRecentLogs(100);
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 100;
+        const result = await logService.getLogs({ page, limit });
 
-        // Map the logs to a format suitable for the frontend, ensuring all necessary fields are included and properly formatted
-        const formattedLogs = recentLogs.map(log => ({
+        // Format logs for frontend
+        const formattedLogs = result.data.map(log => ({
             id: log._id,
             ip: log.remoteIp,
             method: log.requestMethod || 'UNKNOWN',
@@ -258,7 +260,10 @@ app.get('/api/logs', async (req: Request, res: Response) => {
             userAgent: log.userAgent
         }));
 
-        res.json(formattedLogs);
+        res.json({
+            data: formattedLogs,
+            pagination: result.pagination
+        });
     } catch (err) {
         console.error("[API] Lỗi khi lấy danh sách logs:", err);
         res.status(500).json({ message: "Internal server error" });
@@ -267,21 +272,37 @@ app.get('/api/logs', async (req: Request, res: Response) => {
 
 // 3. Firewall Rules Management
 app.get('/api/firewall/rules', (req: Request, res: Response) => {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 100;
+
     const blockedIPs = firewallService.getBlockedIPs();
-    
-    // Map the raw IPs into the format expected by the frontend
-    const rules = blockedIPs.map(ip => {
+    const total = blockedIPs.length;
+    const pageNum = Math.max(1, page);
+    const limitNum = Math.min(1000, Math.max(10, limit));
+    const skip = (pageNum - 1) * limitNum;
+
+    const paginatedIPs = blockedIPs.slice(skip, skip + limitNum);
+
+    const rules = paginatedIPs.map(ip => {
         const profile = dosDetector.getProfile(ip);
         return {
             ip: ip,
             detector: profile ? 'DOS' : 'MANUAL',
             reason: profile ? `Trust Score depleted (${profile.trustScore})` : 'Added via OS Firewall',
-            blockedAt: new Date().toISOString(), // Fallback timestamp
+            blockedAt: new Date().toISOString(),
             trustScore: profile ? profile.trustScore : 0
         };
     });
-    
-    res.json(rules);
+
+    res.json({
+        data: rules,
+        pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum)
+        }
+    });
 });
 
 // 4. Manual Unblock
