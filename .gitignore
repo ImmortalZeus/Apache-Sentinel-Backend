@@ -6,3 +6,5 @@
 **/.env
 
 **/tsconfig.build.tsbuildinfo
+# Added by code-review-graph
+.code-review-graph/
