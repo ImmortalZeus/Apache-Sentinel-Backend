@@ -247,7 +247,8 @@ app.get('/api/logs', async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 100;
-        const result = await logService.getLogs({ page, limit });
+        const limitNum = Math.min(1000, Math.max(10, limit));
+        const result = await logService.getLogs({ page, limit: limitNum });
 
         // Format logs for frontend
         const formattedLogs = result.data.map(log => ({
@@ -265,44 +266,49 @@ app.get('/api/logs', async (req: Request, res: Response) => {
             pagination: result.pagination
         });
     } catch (err) {
-        console.error("[API] Lỗi khi lấy danh sách logs:", err);
+        console.error("[API] Error fetching logs:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 });
 
 // 3. Firewall Rules Management
 app.get('/api/firewall/rules', (req: Request, res: Response) => {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 100;
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 100;
 
-    const blockedIPs = firewallService.getBlockedIPs();
-    const total = blockedIPs.length;
-    const pageNum = Math.max(1, page);
-    const limitNum = Math.min(1000, Math.max(10, limit));
-    const skip = (pageNum - 1) * limitNum;
+        const blockedIPs = firewallService.getBlockedIPs();
+        const total = blockedIPs.length;
+        const pageNum = Math.max(1, page);
+        const limitNum = Math.min(1000, Math.max(10, limit));
+        const skip = (pageNum - 1) * limitNum;
 
-    const paginatedIPs = blockedIPs.slice(skip, skip + limitNum);
+        const paginatedIPs = blockedIPs.slice(skip, skip + limitNum);
 
-    const rules = paginatedIPs.map(ip => {
-        const profile = dosDetector.getProfile(ip);
-        return {
-            ip: ip,
-            detector: profile ? 'DOS' : 'MANUAL',
-            reason: profile ? `Trust Score depleted (${profile.trustScore})` : 'Added via OS Firewall',
-            blockedAt: new Date().toISOString(),
-            trustScore: profile ? profile.trustScore : 0
-        };
-    });
+        const rules = paginatedIPs.map(ip => {
+            const profile = dosDetector.getProfile(ip);
+            return {
+                ip: ip,
+                detector: profile ? 'DOS' : 'MANUAL',
+                reason: profile ? `Trust Score depleted (${profile.trustScore})` : 'Added via OS Firewall',
+                blockedAt: new Date().toISOString(),
+                trustScore: profile ? profile.trustScore : 0
+            };
+        });
 
-    res.json({
-        data: rules,
-        pagination: {
-            page: pageNum,
-            limit: limitNum,
-            total,
-            totalPages: Math.ceil(total / limitNum)
-        }
-    });
+        res.json({
+            data: rules,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum)
+            }
+        });
+    } catch (err) {
+        console.error("[API] Error fetching firewall rules:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
 });
 
 // 4. Manual Unblock
