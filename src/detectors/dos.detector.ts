@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events'
 import os from 'os'
 import { configService } from '../services/config.service'
 import { ddosDetector } from './ddos.detector'
@@ -75,13 +76,14 @@ function measureCPUUsage(): number {
 
 // ─── DoS Detector ──────────────────────────────────────────────────────────
 
-export class DoSDetector {
+export class DoSDetector extends EventEmitter {
     private readonly profiles = new Map<string, IPProfile>()
     private config: DoSConfig                   // mutable — hot-reload via updateConfig()
     private globalBaseThreshold: number
     private currentCPUUsage: number = 0
 
     constructor(config: Partial<DoSConfig> = {}) {
+        super()
         this.config = {
             ...DEFAULT_CONFIG,
             // seed WINDOW_MS and baseThreshold from live config service
@@ -150,6 +152,7 @@ export class DoSDetector {
             if (profile.trustScore < this.config.blockTrustThreshold) {
                 profile.isBlocked = true
                 console.warn(`[DoS] ${ip} BLOCKED`)
+                this.emit('dos-block-ip', ip)
                 return true
             }
         }
@@ -163,6 +166,7 @@ export class DoSDetector {
         profile.isBlocked = false
         profile.trustScore = this.config.initialTrustScore
         console.info(`[DoS] ${ip} unblocked`)
+        this.emit('dos-unblock-ip', ip)
     }
 
     getProfile(ip: string): IPProfile | undefined { return this.profiles.get(ip) }
