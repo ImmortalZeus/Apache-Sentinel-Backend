@@ -18,6 +18,7 @@ export interface LiveDdosConfig {
     COORDINATED_DISTINCT_IP_THRESHOLD: number;
     COORDINATED_ERROR_RATIO_THRESHOLD: number;
     SUBNET_PREFIX_LENGTH:              number;
+    SUBNET_DISTINCT_IP_THRESHOLD:      number;
     SUBNET_RATE_THRESHOLD:             number;
     SUBNET_BLOCK_BASE_TTL_MS:          number;
     PANIC_MODE_DURATION_MS:            number;
@@ -55,6 +56,7 @@ class ConfigService {
             COORDINATED_DISTINCT_IP_THRESHOLD: envDdos.COORDINATED_DISTINCT_IP_THRESHOLD,
             COORDINATED_ERROR_RATIO_THRESHOLD: rawConfig.ddos.COORDINATED_ERROR_RATIO_THRESHOLD,
             SUBNET_PREFIX_LENGTH:              rawConfig.ddos.SUBNET_PREFIX_LENGTH,
+            SUBNET_DISTINCT_IP_THRESHOLD:      (rawConfig.ddos as any).SUBNET_DISTINCT_IP_THRESHOLD ?? 5,
             SUBNET_RATE_THRESHOLD:             envDdos.SUBNET_RATE_THRESHOLD,
             SUBNET_BLOCK_BASE_TTL_MS:          envDdos.SUBNET_BLOCK_BASE_TTL_MS,
             PANIC_MODE_DURATION_MS:            envDdos.PANIC_MODE_DURATION_MS,
@@ -93,6 +95,7 @@ class ConfigService {
             'COORDINATED_DISTINCT_IP_THRESHOLD',
             'COORDINATED_ERROR_RATIO_THRESHOLD',
             'SUBNET_PREFIX_LENGTH',
+            'SUBNET_DISTINCT_IP_THRESHOLD',
             'SUBNET_RATE_THRESHOLD',
             'SUBNET_BLOCK_BASE_TTL_MS',
             'PANIC_MODE_DURATION_MS',

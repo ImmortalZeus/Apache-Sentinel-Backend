@@ -16,6 +16,7 @@
     "ddos": {
         "COORDINATED_ERROR_RATIO_THRESHOLD": 0.8,
         "SUBNET_PREFIX_LENGTH": 24,
+        "SUBNET_DISTINCT_IP_THRESHOLD": 5,
 
         "development": {
             "GLOBAL_RATE_THRESHOLD": 100,

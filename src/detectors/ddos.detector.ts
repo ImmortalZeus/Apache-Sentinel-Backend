@@ -15,8 +15,8 @@ class DDoSDetector extends EventEmitter{
     // UPDATED: Now tracks errorCount to differentiate Flash Crowds from true botnets
     private urlPatterns = new Map<string, { timestamps: number[], errorTimestamps: number[], ipLastSeen: Map<string, number> }>();
 
-    // Strategy 3: Proactive Subnet Volume Tracking Map<subnetCidr, timestamps[]>
-    private subnetVolumeTracker = new Map<string, number[]>();
+    // Strategy 3: Proactive Subnet Volume Tracking Map<subnetCidr, { timestamps: number[], ipLastSeen: Map<string, number> }>
+    private subnetVolumeTracker = new Map<string, { timestamps: number[], ipLastSeen: Map<string, number> }>();
 
     // ─── Panic Mode (Stage 1 Mitigation) ───
     private panicModeActive = false;
@@ -153,26 +153,26 @@ class DDoSDetector extends EventEmitter{
         * Strategy 3: Proactive Subnet Volume Tracking
             * - Extracts subnet from incoming IP (e.g., /24).
             * - Tracks request volume per subnet in a sliding window.
-            * - If a subnet exceeds a request threshold, triggers a temporary block via firewall service with TTL.
+            * - If a subnet exceeds a request threshold AND has requests from multiple distinct IPs, triggers a temporary block via firewall service with TTL.
         */
         
         const subnet = this.extractSubnet(ip);
         if (!subnet) return; // Ignore IPv6
 
         if (!this.subnetVolumeTracker.has(subnet)) {
-            this.subnetVolumeTracker.set(subnet, []);
+            this.subnetVolumeTracker.set(subnet, { timestamps: [], ipLastSeen: new Map<string, number>() });
         }
 
-        const timestamps = this.subnetVolumeTracker.get(subnet)!;
-        timestamps.push(now);
+        const data = this.subnetVolumeTracker.get(subnet)!;
+        data.timestamps.push(now);
+        data.ipLastSeen.set(ip, now);
 
         // Remove timestamps outside the sliding window
         const cutoff = now - cfg().GLOBAL_RATE_WINDOW_MS
-        const recent = timestamps.filter(t => t > cutoff)
-        this.subnetVolumeTracker.set(subnet, recent)
+        data.timestamps = data.timestamps.filter(t => t > cutoff)
 
-        if (timestamps.length > cfg().SUBNET_RATE_THRESHOLD) {
-            const msg = `[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}.`;
+        if (data.timestamps.length > cfg().SUBNET_RATE_THRESHOLD && data.ipLastSeen.size >= cfg().SUBNET_DISTINCT_IP_THRESHOLD) {
+            const msg = `[!] DDoS ALERT: Subnet Volumetric Attack detected from ${subnet}. IPs: ${data.ipLastSeen.size}.`;
             console.warn(msg);
             notificationService.notifyDDoS("Subnet Attack", msg);
 
@@ -207,12 +207,15 @@ class DDoSDetector extends EventEmitter{
         }
         
         // 3. Clean Subnet Volume Tracker
-        for (const [subnet, timestamps] of this.subnetVolumeTracker.entries()) {
-            const activeTimestamps = timestamps.filter(t => t > cutoff);
-            if (activeTimestamps.length === 0) {
+        for (const [subnet, data] of this.subnetVolumeTracker.entries()) {
+            data.timestamps = data.timestamps.filter(t => t > cutoff);
+            
+            for (const [ip, lastSeen] of data.ipLastSeen.entries()) {
+                if (lastSeen <= cutoff) data.ipLastSeen.delete(ip);
+            }
+
+            if (data.timestamps.length === 0) {
                 this.subnetVolumeTracker.delete(subnet);
-            } else {
-                this.subnetVolumeTracker.set(subnet, activeTimestamps);
             }
         }
     }
