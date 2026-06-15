@@ -277,8 +277,9 @@ app.post('/api/firewall/unblock', async (req: Request, res: Response) => {
     }
     
     try {
-        // dosDetector.unblock() emits event, listener handles firewallService.unblock()
+        // Both: event listener handles unblock + direct call as safety net for missing profile
         dosDetector.unblock(ip);
+        await firewallService.unblock(ip); // Safety net: ensures firewall is updated
         res.sendStatus(200);
     } catch (err) {
         console.error(`[API] Failed to unblock ${ip}:`, err);
