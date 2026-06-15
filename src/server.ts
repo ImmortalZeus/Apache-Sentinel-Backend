@@ -123,24 +123,11 @@ app.post('/log', async (req: Request, res: Response) => {
             return;
         }
 
-        // 2. DoS Analysis (Per-IP) and Firewall Execution
+        // 2. DoS Analysis (Per-IP)
+        // Event listener handles firewall blocking and notifications
         let isBlocked = false;
         if (lineData.remoteIp) {
-            // Check if this specific IP is spamming
-            const shouldBlock = await dosDetector.check(lineData.remoteIp);
-
-            if (shouldBlock) {
-                isBlocked = true;
-                const alreadyBlocked = firewallService.isBlocked(lineData.remoteIp);
-
-                // Block the IP at the Layer 3 network level
-                await firewallService.block(lineData.remoteIp);
-
-                if (!alreadyBlocked) {
-                    // Dispatch a notification only upon the initial block event
-                    notificationService.notify(lineData.remoteIp);
-                }
-            }
+            isBlocked = await dosDetector.check(lineData.remoteIp);
         }
 
         // 3. DDoS Analysis (Global, Coordinated, Subnet Strategies)
