@@ -10,8 +10,16 @@ export interface IUser extends Document {
 const UserSchema = new Schema<IUser>({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, default: 'admin' },
+  role: { type: String, default: 'user' },
   createdAt: { type: Date, default: Date.now },
+});
+
+// Remove password from JSON output
+UserSchema.set('toJSON', {
+  transform: (_doc, ret) => {
+    delete ret.password;
+    return ret;
+  },
 });
 
 export const User = mongoose.model<IUser>('User', UserSchema);
