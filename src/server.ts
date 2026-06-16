@@ -33,7 +33,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use(cors({ origin: 'http://localhost:5173' })); // Allow the Vite frontend to access this API
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true,
+})); // Allow the Vite frontend to access this API with credentials
 
 const upload = multer();
 app.use(upload.none());
