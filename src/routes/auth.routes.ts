@@ -39,7 +39,11 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // POST /api/auth/logout
 router.post('/logout', (_req: Request, res: Response) => {
-  res.clearCookie('auth_token');
+  res.clearCookie('auth_token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
   res.json({ message: 'Logged out' });
 });
 
@@ -50,6 +54,12 @@ router.get('/me', authMiddleware, (req: Request, res: Response) => {
 
 // POST /api/auth/seed (dev only - creates admin if not exists)
 router.post('/seed', async (_req: Request, res: Response) => {
+  // Guard: disable in production
+  if (process.env.NODE_ENV === 'production') {
+    res.status(404).json({ message: 'Not found' });
+    return;
+  }
+
   try {
     const exists = await userExists('admin');
     if (exists) {
