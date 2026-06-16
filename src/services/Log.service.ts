@@ -85,7 +85,7 @@ class LogService {
         const dbCount = await Log.countDocuments();
         return dbCount + this.queue.length; 
     }
-
+    
     async getRecentLogs(limit: number = 100) {
         // Mongoose will fetch the most recent logs based on the 'time' field, combining both the database and in-memory queue.
         return await Log.find().sort({ time: -1 }).limit(limit);

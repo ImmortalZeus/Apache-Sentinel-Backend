@@ -203,7 +203,7 @@ export class FirewallService {
         }
     }
 
-    private async unblockSubnet(cidr: string): Promise<void> {
+    public async unblockSubnet(cidr: string): Promise<void> {
         if (!this.blockedIPs.has(cidr)) return;
         this.blockedIPs.delete(cidr);
 
