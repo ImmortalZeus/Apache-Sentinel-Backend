@@ -4,6 +4,9 @@ import rawConfig from './config.json';
 import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import nocache from 'nocache';
+import cookieParser from 'cookie-parser';
+import authRoutes from './routes/auth.routes';
+import { seedAdmin } from './seed';
 
 // Services & Utilities
 import { logService } from 'services/Log.service';
@@ -28,6 +31,7 @@ const port: number = serverConfig.PORT;
 app.use(express.text());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.use(cors({ origin: 'http://localhost:5173' })); // Allow the Vite frontend to access this API
 
@@ -98,6 +102,9 @@ dosDetector.on('dos-unblock-ip', async (ip: string) => {
 app.get('/', (req: Request, res: Response) => {
     res.send('Hello World! Apache Sentinel is running.');
 });
+
+// Auth Routes
+app.use('/api/auth', authRoutes);
 
 // [PANIC MODE] Load Shedding Middleware
 // During Stage 1 DDoS, we block heavy processing to save the server
@@ -432,16 +439,19 @@ async function startServer() {
         // 1. Establish Database Connection
         await dbService.connect();
 
-        // 2. Verify Administrator Privileges (Required for executing netsh commands)
+        // 2. Seed admin user
+        await seedAdmin();
+
+        // 3. Verify Administrator Privileges (Required for executing netsh commands)
         await checkAdminPrivilege();
-        
-        // 3. Synchronize Firewall State
+
+        // 4. Synchronize Firewall State
         await firewallService.syncFromFirewall();
 
         // This synchronizes the internal detector state with the OS firewall state.
         dosDetector.syncBlockedIPs(firewallService.getBlockedIPs());
 
-        // 4. Initialize the HTTP Listener
+        // 5. Initialize the HTTP Listener
         app.listen(port, () => {
             console.log(`[Server] Sentinel is running on http://localhost:${port}`);
         });
