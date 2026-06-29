@@ -116,7 +116,7 @@ app.use('/api/auth', authRoutes);
 // During Stage 1 DDoS, we block heavy processing to save the server
 app.use((req: Request, res: Response, next: NextFunction) => {
     if (ddosDetector.isUnderAttack()) {
-        const heavyPaths = ['/api/export', '/api/search', '/api/logs'];
+        const heavyPaths = ['/api/stats', '/api/export', '/api/search'];
         if (heavyPaths.some(path => req.path.startsWith(path))) {
             res.status(503).send({
                 message: "System is under heavy load (Panic Mode). This feature is temporarily disabled."
